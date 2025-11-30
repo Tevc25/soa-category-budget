@@ -1,13 +1,20 @@
 from datetime import datetime
+from typing import List
 from pydantic import BaseModel, field_serializer
 
 class CategoryRequest(BaseModel):
     name: str
     
+class CategoryItem(BaseModel):
+    item_id: str
+    item_name: str
+    item_price: float
+    item_quantity: int
+    created_at: str | None = None
 class CategoryResponse(BaseModel):
     category_id: str
     name: str
-    items: list[str]
+    items: List[CategoryItem]
     created_at: datetime
     updated_at: datetime
     

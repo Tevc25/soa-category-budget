@@ -17,6 +17,15 @@ class CategoryService:
         self.expense_service_url = base
         self.expense_service_url_fallback = "http://localhost:8000"
         self.expense_service_internal = "http://soa-expense:8000"
+        
+    def _ensure_item_dates(self, raw_items: list[dict]) -> list[dict]:
+        now_iso = datetime.now().isoformat()
+        out = []
+        for it in raw_items or []:
+            if isinstance(it, dict) and "created_at" not in it:
+                it = {**it, "created_at": now_iso}
+            out.append(it)
+        return out
 
     def _fetch_expenses(self, user_id: str) -> list[dict]:
         urls: list[str] = []
@@ -68,6 +77,7 @@ class CategoryService:
                 continue
 
             raw_items = exp.get("items", []) or []
+            raw_items = self._ensure_item_dates(raw_items)
 
             if desc == name:
                 items = raw_items
@@ -111,7 +121,9 @@ class CategoryService:
             desc = exp.get("description", "").strip()
             if desc:
                 current = expense_items_by_desc.get(desc, [])
-                expense_items_by_desc[desc] = current + (exp.get("items", []) or [])
+                raw_items = exp.get("items", []) or []
+                raw_items = self._ensure_item_dates(raw_items)
+                expense_items_by_desc[desc] = current + raw_items
         if not expenses:
             print(f"[CategoryService] no expenses available when listing categories for user {user_id}")
 
