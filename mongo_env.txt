@@ -1,0 +1,5 @@
+tevzstar_db_user
+DmDTDB2IefYJysFY
+
+python -m pip install "pymongo[srv]"
+mongodb+srv://tevzstar_db_user:DmDTDB2IefYJysFY@categoryservice.l13tjpk.mongodb.net/?appName=categoryService
