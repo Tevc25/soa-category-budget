@@ -136,4 +136,5 @@ docker-compose.override.yml
 *.sqlite3
 dump.rdb
 *.bak
+mongo_env.txt
 
