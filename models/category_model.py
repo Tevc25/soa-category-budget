@@ -7,6 +7,7 @@ class CategoryRequest(BaseModel):
 class CategoryResponse(BaseModel):
     category_id: str
     name: str
+    items: list[str]
     created_at: datetime
     updated_at: datetime
     
