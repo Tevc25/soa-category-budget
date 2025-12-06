@@ -5,7 +5,7 @@ from services.jwt_service import JWTService
 jwt_service = JWTService()
 
 async def verify_jwt_token(
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None, alias="Authorization")
 ) -> dict:
     """
     FastAPI dependency that verifies JWT token from Authorization header.
