@@ -1,10 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from routers.router import router
 import uvicorn
 import os
 
-app = FastAPI()
+app = FastAPI(
+    title="Category & Budget Service",
+    version="1.0.0",
+    swagger_ui_parameters={"persistAuthorization": True},
+)
 
 def get_allowed_origins():
     env_origins = os.getenv("CORS_ORIGINS")
@@ -27,6 +32,36 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+def custom_openapi():
+    """
+    Inject HTTP Bearer auth scheme so Swagger shows the Authorize button for JWT.
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    openapi_schema["components"]["securitySchemes"]["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+
+    for path in openapi_schema.get("paths", {}).values():
+        for operation in path.values():
+            # Apply bearer security to all operations
+            operation.setdefault("security", [{"BearerAuth": []}])
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
