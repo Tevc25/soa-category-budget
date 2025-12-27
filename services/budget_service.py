@@ -1,13 +1,16 @@
+import logging
 import re
 from datetime import datetime
 from bson import ObjectId
 from db.database import get_db
 from models.budget_model import BudgetRequest
+from logging_utils import get_correlation_id
 
 MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 class BudgetService:
     def __init__(self):
+        self.logger = logging.getLogger("soa-category-budget")
         self.db = get_db()
         self.budgets = self.db["budget_data"]
         self.categories = self.db["category_data"]
@@ -36,6 +39,14 @@ class BudgetService:
                 {"_id": existing["_id"]},
                 {"$set": {"limit": float(payload.limit), "updated_at": now}}
             )
+            self.logger.info(
+                "Budget updated",
+                extra={
+                    "correlation_id": get_correlation_id(),
+                    "path": f"/{user_id}/budgets/upsert",
+                    "detail": f"budget_id={existing['_id']}",
+                },
+            )
             return {"message": "Budget updated successfully", "budget_id": str(existing["_id"])}
 
         doc = {
@@ -45,6 +56,14 @@ class BudgetService:
             "updated_at": now
         }
         res = self.budgets.insert_one(doc)
+        self.logger.info(
+            "Budget created",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/budgets/upsert",
+                "detail": f"budget_id={res.inserted_id}",
+            },
+        )
         return {"message": "Budget created successfully", "budget_id": str(res.inserted_id)}
 
     def get_budgets(self, user_id: str, month: str | None):
@@ -71,6 +90,14 @@ class BudgetService:
         res = self.budgets.delete_one({"_id": ObjectId(budget_id), "user_id": user_id})
         if res.deleted_count == 0:
             raise ValueError("Budget not found")
+        self.logger.info(
+            "Budget deleted",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/budgets/{budget_id}/delete",
+                "detail": f"deleted_id={budget_id}",
+            },
+        )
         return {"message": "Budget deleted successfully"}
     
     def update_budget(self, user_id: str, budget_id: str, payload: BudgetRequest):
@@ -96,4 +123,12 @@ class BudgetService:
         if res.matched_count == 0:
             raise ValueError("Budget not found")
 
+        self.logger.info(
+            "Budget updated",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/budgets/{budget_id}/update",
+                "detail": f"month={payload.month}",
+            },
+        )
         return {"message": "Budget updated successfully"}

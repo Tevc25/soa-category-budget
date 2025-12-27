@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime
 from urllib.parse import urlparse
@@ -5,9 +6,11 @@ from bson import ObjectId
 import requests
 from db.database import get_db
 from models.category_model import CategoryRequest
+from logging_utils import get_correlation_id
 
 class CategoryService:
     def __init__(self):
+        self.logger = logging.getLogger("soa-category-budget")
         self.db = get_db()
         self.col = self.db["category_data"]
         base = os.getenv("EXPENSE_SERVICE_URL", "http://soa-expense:8000").rstrip("/")
@@ -40,16 +43,41 @@ class CategoryService:
         for base in urls:
             try:
                 target = f"{base}/{user_id}/expenses"
-                print(f"[CategoryService] fetching expenses from {target}")
+                self.logger.info(
+                    "Fetching expenses",
+                    extra={
+                        "correlation_id": get_correlation_id(),
+                        "url": target,
+                        "method": "GET",
+                    },
+                )
                 resp = requests.get(target, timeout=5)
                 resp.raise_for_status()
                 payload = resp.json()
-                print(f"[CategoryService] success {target} -> {len(payload)} expenses")
+                self.logger.info(
+                    "Fetched expenses successfully",
+                    extra={
+                        "correlation_id": get_correlation_id(),
+                        "url": target,
+                        "method": "GET",
+                        "status_code": resp.status_code,
+                    },
+                )
                 return payload
             except requests.RequestException as exc:
-                print(f"[CategoryService] failed fetch {base}: {exc}")
+                self.logger.warning(
+                    "Failed to fetch expenses: %s", exc,
+                    extra={
+                        "correlation_id": get_correlation_id(),
+                        "url": target,
+                        "method": "GET",
+                    },
+                )
                 continue
-        print("[CategoryService] all expense fetch attempts failed")
+        self.logger.error(
+            "All expense fetch attempts failed",
+            extra={"correlation_id": get_correlation_id()},
+        )
         return []
 
     def create_category(self, user_id: str, payload: CategoryRequest) -> str:
@@ -65,9 +93,23 @@ class CategoryService:
         extra_categories: list[dict] = []
         seen_extra_names: set[str] = set()
         expenses = self._fetch_expenses(user_id)
-        print(f"[CategoryService] fetched expenses for user {user_id}: base_url={self.expense_service_url}, count={len(expenses)}")
+        self.logger.info(
+            "Fetched expenses for category creation",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/categories/create",
+                "detail": f"count={len(expenses)}",
+            },
+        )
         if not expenses:
-            print(f"[CategoryService] no expenses found for user {user_id}, category will store empty items")
+            self.logger.warning(
+                "No expenses found for user, category will store empty items",
+                extra={
+                    "correlation_id": get_correlation_id(),
+                    "path": f"/{user_id}/categories/create",
+                    "detail": "empty-expense-list",
+                },
+            )
 
         now = datetime.now()
 
@@ -81,14 +123,28 @@ class CategoryService:
 
             if desc == name:
                 items = raw_items
-                print(f"[CategoryService] matched requested category '{name}' with expense items count={len(items)}")
+                self.logger.info(
+                    "Matched requested category with expenses",
+                    extra={
+                        "correlation_id": get_correlation_id(),
+                        "path": f"/{user_id}/categories/create",
+                        "detail": f"name={name}, items={len(items)}",
+                    },
+                )
             else:
                 if desc in seen_extra_names:
                     continue
                 seen_extra_names.add(desc)
                 exists_extra = self.col.find_one({"user_id": user_id, "name": desc})
                 if not exists_extra:
-                    print(f"[CategoryService] auto-creating category '{desc}' with items count={len(raw_items)}")
+                    self.logger.info(
+                        "Auto creating extra category from expense description",
+                        extra={
+                            "correlation_id": get_correlation_id(),
+                            "path": f"/{user_id}/categories/create",
+                            "detail": f"name={desc}, items={len(raw_items)}",
+                        },
+                    )
                     extra_categories.append({
                         "user_id": user_id,
                         "name": desc,
@@ -107,6 +163,14 @@ class CategoryService:
         res = self.col.insert_one(doc)
         if extra_categories:
             self.col.insert_many(extra_categories)
+        self.logger.info(
+            "Category created",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/categories/create",
+                "detail": f"category_id={str(res.inserted_id)}",
+            },
+        )
         return {
             "message": "Category created successfully",
             "category_id": str(res.inserted_id),
@@ -125,7 +189,13 @@ class CategoryService:
                 raw_items = self._ensure_item_dates(raw_items)
                 expense_items_by_desc[desc] = current + raw_items
         if not expenses:
-            print(f"[CategoryService] no expenses available when listing categories for user {user_id}")
+            self.logger.warning(
+                "No expenses available when listing categories",
+                extra={
+                    "correlation_id": get_correlation_id(),
+                    "path": f"/{user_id}/categories",
+                },
+            )
 
         docs = self.col.find({"user_id": user_id}).sort("name", 1)
         out = []
@@ -163,6 +233,14 @@ class CategoryService:
             raise ValueError("Category not found")
 
         updated = self.col.find_one({"_id": ObjectId(category_id), "user_id": user_id})
+        self.logger.info(
+            "Category updated",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/categories/{category_id}/update",
+                "detail": f"name={updated['name']}",
+            },
+        )
         return {
             "message": "Category updated successfully",
             "category_id": category_id,
@@ -175,4 +253,12 @@ class CategoryService:
         res = self.col.delete_one({"_id": ObjectId(category_id), "user_id": user_id})
         if res.deleted_count == 0:
             raise ValueError("Category not found")
+        self.logger.info(
+            "Category deleted",
+            extra={
+                "correlation_id": get_correlation_id(),
+                "path": f"/{user_id}/categories/{category_id}/delete",
+                "detail": f"deleted_id={category_id}",
+            },
+        )
         return {"message": "Category deleted successfully"}

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from routers.router import router
+from logging_utils import init_request_logging
 import uvicorn
 import os
 
@@ -31,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+init_request_logging(app, "soa-category-budget")
 app.include_router(router)
 
 def custom_openapi():
